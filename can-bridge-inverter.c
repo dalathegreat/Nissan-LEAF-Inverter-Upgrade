@@ -34,8 +34,10 @@ volatile	uint8_t		shift_state				= 0;
 #define SHIFT_PARK		0
 
 // Variables used for deleting P3197 DTC
-volatile	can_frame_t		inv_120_message	= {.can_id = 0x120, .can_dlc = 8, .data = {4,0,1,0,0,0,0x3C,0}};
-	
+volatile	can_frame_t	inv_4B9_message	= {.can_id = 0x4B9, .can_dlc = 1, .data = {0x40}};
+volatile	uint8_t		content_4B9			= 0x40;
+
+//General variables
 volatile	uint8_t		can_busy			= 0;		//tracks whether the can_handler() subroutine is running
 volatile	uint16_t	sec_timer			= 1;		//counts down from 1000
 volatile	uint16_t	ms_timer_100		= 1;		//increments on every TCC0 overflow (ever ms)
@@ -343,17 +345,17 @@ void can_handler(uint8_t can_bus){
 				
 				torqueDemand = (int16_t) ((frame.data[2] << 8) | frame.data[3]); //Requested torque is 12-bit long signed.
 				torqueDemand = (torqueDemand & 0xFFF0) >> 4; //take out only 12 bits (remove 4)
-				
+							
 				temp = (torqueDemand & 0b0000100000000000); //extract the 12th bit, this contains signed info.
-				if (temp > 0){//message is signed
+				if (temp > 0){//check if message is signed
 					break; //We are demanding regen, abort modification of message TODO, make better handling of this
 				}
 				
-				if(shift_state == SHIFT_DRIVE){ //increase power only when in drive
-					if(torqueDemand >= 1015){ //We are at top what VCM can demand (1015*0.25 = 253Nm)
-						torqueDemand = torqueDemand + 20; //Add 5Nm of power (20*0.25 = 5Nm)
-						torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits
-							
+				if(shift_state == SHIFT_DRIVE){ // Increase power only when in drive AND
+					if(torqueDemand > 180){ // When outside creep area (180*0.25 = 45Nm)
+						torqueDemand = torqueDemand*1.3; //Add a multiplier of 1.3 to torque (250NM*1.3=325NM)
+						
+						torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
 						frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
 						frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
 						calc_crc8(&frame);
@@ -373,14 +375,35 @@ void can_handler(uint8_t can_bus){
 				} 
 
 				if(shift_state == SHIFT_DRIVE){ //modify power response message only when in drive
-					if(torqueResponse > 509){ //(509*0.5=254Nm)
-						//Cap the response at max 254, fool the VCM that all is OK
-						frame.data[2] = ((frame.data[2] & 0xF8) + (0x19 & 0x03)); //only disturb the last three digits
-						frame.data[3] = 0xFA; //0x19 FA = 253Nm
+					if(torqueResponse > 90){ //(90*0.5=45Nm)
+						torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller
+						
+						frame.data[2] = (torqueResponse >> 8);
+						frame.data[3] = (torqueResponse & 0xFF);
 						calc_crc8(&frame);
 					}
 				}
 
+				break;
+			case 0x50C: //Hacky way of generating missing inverter message
+				//Upon reading VCM originating 0x50C every 100ms, send the missing message to the inverter
+				if(can_bus == 1)
+				{
+					send_can2(inv_4B9_message);
+				} 
+				else 
+				{
+					send_can1(inv_4B9_message);
+				}
+				
+				content_4B9++;
+				if(content_4B9 > 79)
+				{
+					content_4B9 = 64;
+				}
+				
+				inv_4B9_message.data[0] = content_4B9; //64 - 79 (0x40 - 0x4F)
+				
 				break;
 			default:
 			break;
