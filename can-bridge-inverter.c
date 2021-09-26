@@ -11,20 +11,20 @@ The firmware should also be possible to do the following at your own risk
 
 
 /* Choose your inverter */
-
 #define LEAF_110kW
 //#define LEAF_160kW
 
 /* Optional functionality */
-#define DISABLE_CREEP
+//#define DISABLE_CREEP
 //#define USB_SERIAL
 //#define ENABLE_CAN3
 
 
 #include "can-bridge-inverter.h"
 
-volatile	int16_t		torqueDemand			= 0;
-volatile	int16_t		torqueResponse			= 0;
+volatile	int16_t		torqueDemand			= 0; //NM * 4
+volatile	int16_t		torqueResponse			= 0; //NM * 2
+volatile	int16_t		VCMtorqueDemand			= 0; //NM * 4
 volatile	uint8_t		shift_state				= 0;
 
 #define SHIFT_DRIVE		4
@@ -307,7 +307,7 @@ ISR(PORTC_INT0_vect){
 //VCM side of the CAN bus (in Muxsan)
 void can_handler(uint8_t can_bus){
 	can_frame_t frame;
-	int temp = 0;
+	int16_t temp = 0;
 	uint8_t flag = can_read(MCP_REG_CANINTF, can_bus);
 		
 	if (flag & (MCP_RX0IF | MCP_RX1IF)){
@@ -345,6 +345,7 @@ void can_handler(uint8_t can_bus){
 				
 				torqueDemand = (int16_t) ((frame.data[2] << 8) | frame.data[3]); //Requested torque is 12-bit long signed.
 				torqueDemand = (torqueDemand & 0xFFF0) >> 4; //take out only 12 bits (remove 4)
+				VCMtorqueDemand = torqueDemand; //Store the original VCM demand value
 							
 				temp = (torqueDemand & 0b0000100000000000); //extract the 12th bit, this contains signed info.
 				if (temp > 0){//check if message is signed
@@ -353,13 +354,26 @@ void can_handler(uint8_t can_bus){
 				
 				if(shift_state == SHIFT_DRIVE){ // Increase power only when in drive AND
 					if(torqueDemand > 180){ // When outside creep area (180*0.25 = 45Nm)
-						torqueDemand = torqueDemand*1.3; //Add a multiplier of 1.3 to torque (250NM*1.3=325NM)
+						#ifdef LEAF_110kW
+						torqueDemand = torqueDemand*1.375; //Add a multiplier of 1.375 to torque (250NM*1.3=343NM)
+						#endif
+						#ifdef LEAF_160kW
+						torqueDemand = torqueDemand*1.6; //Add a multiplier of 1.6 to torque (250NM*1.3=400NM)
+						#endif
 						
 						torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
 						frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
 						frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
 						calc_crc8(&frame);
-					}					
+					}
+					else{
+						//Inside creep area
+						#ifdef DISABLE_CREEP
+						torqueDemand = 0;
+						frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
+						frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
+						#endif
+					}				
 				}	
 
 
@@ -376,7 +390,9 @@ void can_handler(uint8_t can_bus){
 
 				if(shift_state == SHIFT_DRIVE){ //modify power response message only when in drive
 					if(torqueResponse > 90){ //(90*0.5=45Nm)
-						torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller
+						//torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller (OLD STRATEGY)
+						
+						torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand (remove 
 						
 						frame.data[2] = (torqueResponse >> 8);
 						frame.data[3] = (torqueResponse & 0xFF);
