@@ -13,3 +13,13 @@ Now that we got that out of the way, here's what you need to get started.
 ## FAQ
 - Q: Why doesn't this work on my 2011-2012 LEAF? A: The early leaf has EM61 motors. These aren't compatible with the EM57 inverter style.
 
+## Example installation pics and wiring info
+Here's where the CAN-bridge attaches, behind the glovebox on the left connector going into the VCM.
+
+![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/CAN-bridge1.jpeg)
+![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/CAN-bridge2.jpeg)
+![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/CAN-bridge3.jpeg)
+
+Here are the differences in wiring. Please note that one wire is different color, all the rest matches!
+![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Wiring.png)
+![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Wiring2.png)
