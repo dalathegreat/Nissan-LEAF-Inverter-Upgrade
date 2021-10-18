@@ -353,7 +353,7 @@ void can_handler(uint8_t can_bus){
 				}
 				
 				if(shift_state == SHIFT_DRIVE){ // Increase power only when in drive AND
-					if(torqueDemand > 180){ // When outside creep area (180*0.25 = 45Nm)
+					if(torqueDemand > 1){ // When outside creep area (180*0.25 = 45Nm) [SET TO 1 TO AVOID JERKY SWITCHOVER]
 						#ifdef LEAF_110kW
 						torqueDemand = torqueDemand*1.375; //Add a multiplier of 1.375 to torque (250NM*1.3=343NM)
 						#endif
@@ -389,7 +389,7 @@ void can_handler(uint8_t can_bus){
 				} 
 
 				if(shift_state == SHIFT_DRIVE){ //modify power response message only when in drive
-					if(torqueResponse > 90){ //(90*0.5=45Nm)
+					if(torqueResponse > 1){ //(90*0.5=45Nm) [SET TO 1 TO AVOID JERKY SWITCHOVER]
 						//torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller (OLD STRATEGY)
 						
 						torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand (remove 
