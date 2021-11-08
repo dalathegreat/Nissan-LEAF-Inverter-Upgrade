@@ -13,6 +13,23 @@ Now that we got that out of the way, here's what you need to get started.
 ## FAQ
 - Q: Why doesn't this work on my 2011-2012 LEAF? A: The early leaf has EM61 motors. These aren't compatible with the EM57 inverter style.
 
+## Part numbers
+Here are the part numbers so you know what to get when ordering inverters
+ZE1 inverters (2018-2022)
+- 291A0-5SA1A - 110kW inverter
+- 291A0-5SA1B - 110kW inverter
+- 291A0-5SA0A - 110kW inverter
+- 291A0-5SN0A - ???
+- 291A0-5SN1A - 160kW inverter
+
+Don't get these, just listed so you know what they are.
+AZE0 inverters (2013-2017)
+291A0-3NF1B - 80kW 
+291A0-3NF1A - 80kW
+291A0-3NF0A - 80kW
+ZE0 inverters (2011-2012)
+291A0-3NA0A - 80kW
+
 ## Example installation pics and wiring info
 Here's where the CAN-bridge attaches, behind the glovebox on the left connector going into the VCM.
 
