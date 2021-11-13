@@ -12,6 +12,7 @@ Now that we got that out of the way, here's what you need to get started.
 
 ## FAQ
 - Q: Why doesn't this work on my 2011-2012 LEAF? A: The early leaf has EM61 motors. These aren't compatible with the EM57 inverter style.
+- Q: Resoler coding not available in Leafspy yet! What do? A: Manual resolver coding instructions here: https://openinverter.org/forum/viewtopic.php?p=31056
 
 ## Part numbers
 Here are the part numbers so you know what to get when ordering inverters
