@@ -23,6 +23,11 @@ ZE1 inverters (2018-2022)
 - 291A0-5SN0A - ???
 - 291A0-5SN1A - 160kW inverter
 
+22-pin Yazaki wiring part number: 7283-8750-30
+Buy link: https://nl.aliexpress.com/item/1005003344398420.html?spm=a2g0s.9042311.0.0.25994c4doh13qv
+
+Temperature sensor (no link yet, just use butt-crimp connectors)
+
 Don't get these, just listed so you know what they are.
 AZE0 inverters (2013-2017)
 291A0-3NF1B - 80kW 
