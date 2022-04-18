@@ -8,12 +8,13 @@ Tuning electric vehicles can be very dangerous. I take no responsibility (see li
 Now that we got that out of the way, here's what you need to get started.
 - A 2013-2017 Nissan LEAF (AZE0 model)
 - A newer inverter from a 2018+ ZE1 LEAF (see this video for installation: https://www.youtube.com/watch?v=VGBA8VPWwIg )
+- Leafspy Pro to code in the new resolver offset (see this video for howto: https://www.youtube.com/watch?v=K0v269B0xqo )
 - A CAN-bridge with the firmware in this repository flashed onto it. The CAN-bridge attaches anywhere between the VCM and INV on EV-CAN. 
 - Pre-compiled .hex files are available in the "debug" folder. One for 110kW and one for 160kW. Flashing instructions: https://youtu.be/eLcNSo2Vn6U?t=167
 
 ## FAQ
 - Q: Why doesn't this work on my 2011-2012 LEAF? A: The early leaf has EM61 motors. These aren't compatible with the EM57 inverter style.
-- Q: Resoler coding not available in Leafspy yet! What do? A: Manual resolver coding instructions here: https://openinverter.org/forum/viewtopic.php?p=31056
+- Q: What is resolver offset coding? A: See this video for more info: https://www.youtube.com/watch?v=Of2vCYgblY4
 
 ## Part numbers
 Here are the part numbers so you know what to get when ordering inverters
