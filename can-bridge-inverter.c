@@ -5,20 +5,11 @@ When fitted between the inverter and VCM [EV-CAN], this CAN-bridge firmware allo
  - Modify the commanded torque up
  - Return a lower reported motor torque
  - Send a bunch of 2018+ CAN messages that the inverter expects to keep it error free
- 
-The firmware should also be possible to do the following at your own risk
- - Disable creep mode ( motor commands below 40Nm are ignored )
 */
 
-
 /* Choose your inverter */
-//#define LEAF_110kW
-#define LEAF_160kW
-
-/* Optional functionality */
-//#define DISABLE_CREEP
-//#define ENABLE_CAN3
-
+#define LEAF_110kW
+//#define LEAF_160kW
 
 #include "can-bridge-inverter.h"
 
@@ -82,8 +73,6 @@ volatile	uint8_t		content_4B9			= 0x40;
 		
 //General variables
 volatile	uint8_t		can_busy			= 0;		//tracks whether the can_handler() subroutine is running
-volatile	uint16_t	sec_timer			= 1;		//counts down from 1000
-volatile	uint16_t	ms_timer_100		= 1;		//increments on every TCC0 overflow (ever ms)
 
 //Because the MCP25625 transmit buffers seem to be able to corrupt messages (see errata), we're implementing
 //our own buffering. This is an array of frames-to-be-sent, FIFO. Messages are appended to buffer_end++ as they
@@ -100,21 +89,6 @@ uint8_t		tx2_buffer_end		= 0;
 can_frame_t tx3_buffer[5];
 uint8_t		tx3_buffer_pos		= 0;
 uint8_t		tx3_buffer_end		= 0;
-
-
-
-
-#ifdef USB_SERIAL
-#include "usb-hub-sensor.h"
-uint8_t ReadCalibrationByte( uint8_t index );
-void ProcessCDCCommand(void);
-
-uint8_t		configSuccess				= false;		//tracks whether device successfully enumerated
-static FILE USBSerialStream;							//fwrite target for CDC
-uint8_t		signature[11];								//signature bytes
-//print variables
-volatile	uint8_t		print_char_limit		= 0;
-#endif
 
 void hw_init(void){
 	uint8_t caninit;
@@ -203,9 +177,6 @@ void hw_init(void){
 	XMEGACLK_CCP_Write((void * ) &PMIC.CTRL, PMIC_RREN_bm | PMIC_LOLVLEN_bm | PMIC_HILVLEN_bm);//PMIC.CTRL = PMIC_LOLVLEN_bm | PMIC_MEDLVLEN_bm| PMIC_HILVLEN_bm;
 	
 	USB_Init(USB_OPT_RC32MCLKSRC | USB_OPT_BUSEVENT_PRILOW);
-	#ifdef USB_SERIAL
-	CDC_Device_CreateStream(&VirtualSerial_CDC_Interface, &USBSerialStream);
-	#endif
 	
 	wdt_enable(WDTO_15MS);
 	
@@ -220,90 +191,15 @@ int main(void){
 		//Setup complete, wait for can messages to trigger interrupts
 		}
 }
-#ifdef USB_SERIAL
-/* services commands received over the virtual serial port */
-void ProcessCDCCommand(void)
-{
-	uint16_t	ReportStringLength = 0;
-	char *		ReportString = "";
-	int16_t cmd = CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
-	
-	if(cmd > -1){
-		switch(cmd){
-			case 48: //0
-			break;
-			
-			case 0: //reset
-			case 90: //'Z'
-			_delay_ms(1000);
-			CCP				= CCP_IOREG_gc;					//allow changing CLK.CTRL
-			RST.CTRL		= RST_SWRST_bm;
-			break;
-			
-			case 255: //send identity
-			ReportString = "DALA CAN bridge - v2.5 Leaf\n"; ReportStringLength = 28;
-			break;
-			
-			default: //when all else fails
-			ReportString = "Unrecognized Command:   \n"; ReportStringLength = 25;
-			ReportString[22] = cmd;
-			break;
-		}
-		
-		if(ReportStringLength){
-			print(ReportString, ReportStringLength);
-		}
-		
-	}
-}
-#endif
+
 // Event handler for the LUFA library USB Disconnection event.
 void EVENT_USB_Device_Disconnect(void){}
 
 void EVENT_USB_Device_Connect(void){}
-#ifdef USB_SERIAL
-// Event handler for the LUFA library USB Configuration Changed event.
-void EVENT_USB_Device_ConfigurationChanged(void){ configSuccess &= CDC_Device_ConfigureEndpoints(&VirtualSerial_CDC_Interface); }
-
-// Event handler for the LUFA library USB Control Request reception event.
-void EVENT_USB_Device_ControlRequest(void){	CDC_Device_ProcessControlRequest(&VirtualSerial_CDC_Interface); }
-
-//appends string to ring buffer and initiates transmission
-void print(char * str, uint8_t len){
-	if((print_char_limit + len) <= 120){
-		fwrite(str, len, 1, &USBSerialStream);
-		print_char_limit += len;
-	} else {
-		fwrite("X\n",2,1,&USBSerialStream);
-	}
-}
-#endif
 
 //fires every 1ms
 ISR(TCC0_OVF_vect){	
 	wdt_reset(); //Reset the watchdog
-	sec_timer--; //Increment the 1000ms timer
-	
-	#ifdef USB_SERIAL
-	if(!can_busy) ProcessCDCCommand();
-	CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
-	USB_USBTask();
-	//handle second print buffer
-	if(print_char_limit <= 64) { print_char_limit = 0; }
-	else { print_char_limit -= 64; }
-	#endif
-	
-	//fires every 100ms
-	if(ms_timer_100 == 100) //Task that need to be performed each 100ms go here
-	{
-		ms_timer_100 = 0; //reset the timer
-	}
-	
-	//fires every second (1000ms tasks go here)
-	if(sec_timer == 0){
-		PORTB.OUTCLR = (1 << 1);
-		
-	}
 }
 
 //fires approx. every 100us
@@ -380,27 +276,18 @@ void can_handler(uint8_t can_bus){
 				}
 				
 				if(shift_state == SHIFT_DRIVE){ // Increase power only when in drive AND
-					if(torqueDemand > 1){ // When outside creep area (180*0.25 = 45Nm)
-						#ifdef LEAF_110kW
-						torqueDemand = torqueDemand*1.28; //Add a multiplier of 1.375 to torque (250NM*1.3=343NM)
-						#endif
-						#ifdef LEAF_160kW
-						torqueDemand = torqueDemand*1.35; //Add a multiplier of 1.6 to torque (250NM*1.6=400NM) Just to be sure :)
-						#endif
+					#ifdef LEAF_110kW
+					torqueDemand = torqueDemand*1.32; //Add a multiplier of 1.32
+					//(1.28 is too small, results in 118kW and 1.37 results in 122kW)
+					#endif
+					#ifdef LEAF_160kW
+					torqueDemand = torqueDemand*1.37; //Add a multiplier of 1.37
+					#endif
 						
-						torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
-						frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
-						frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
-						calc_crc8(&frame);
-					}
-					else{
-						//Inside creep area
-						#ifdef DISABLE_CREEP
-						torqueDemand = 0;
-						frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
-						frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
-						#endif
-					}				
+					torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
+					frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
+					frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
+					calc_crc8(&frame);
 				}	
 
 
@@ -416,7 +303,7 @@ void can_handler(uint8_t can_bus){
 				} 
 
 				if(shift_state == SHIFT_DRIVE){ //modify power response message only when in drive
-					if(torqueResponse > 90){ //(90*0.5=45Nm)
+					if(torqueResponse > 1){ //(90*0.5=45Nm)
 						//torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller (OLD STRATEGY)
 						
 						torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand (remove 
@@ -615,31 +502,15 @@ void can_handler(uint8_t can_bus){
 			break;
 			}
 		
-		
-		//block unwanted messages
-			uint8_t block = 0;
-			switch(frame.can_id){
-				case 0xABC:
-					//block = 1;
-					break;
-				default:
-					block = 0;
-					break;
-			}
-			if(!block){
-				if(can_bus == 1){send_can2(frame);} else {send_can1(frame);
-				}
-			}
-		}		
+			if(can_bus == 1){send_can2(frame);} else {send_can1(frame);
+	}
+}		
 			
 	
 	if(flag & 0xA0){
 		uint8_t flag2 = can_read(MCP_REG_EFLG, can_bus);
 		if(flag2 & 0xC0){
 			can_write(MCP_REG_EFLG, 0, can_bus); //reset all errors
-			//ReportString = "CANX RX OVF\n";
-			//ReportString[3] = 48 + can_bus;
-			//print(ReportString,12);
 		}
 		if(flag2 > 0){ PORTB.OUTSET = (1 << 1); }
 		if(flag & 0xE0){ can_bit_modify(MCP_REG_CANINTF, (flag & 0xE0), 0x00, can_bus);	}
@@ -647,11 +518,10 @@ void can_handler(uint8_t can_bus){
 	can_busy = 0;
 }
 
-
 void send_can(uint8_t can_bus, can_frame_t frame){
 	if(can_bus == 1) send_can1(frame);
-	if(can_bus == 2) send_can2(frame);
-	if(can_bus == 3) send_can3(frame);
+	else if(can_bus == 2) send_can2(frame);
+	else if(can_bus == 3) send_can3(frame);
 }
 
 void send_can1(can_frame_t frame){	
@@ -664,8 +534,6 @@ void send_can1(can_frame_t frame){
 	
 	check_can1();
 }
-
-
 
 void check_can1(void){
 	uint8_t reg;
