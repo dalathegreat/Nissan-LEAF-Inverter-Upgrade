@@ -15,6 +15,7 @@ Now that we got that out of the way, here's what you need to get started.
 ## FAQ
 - Q: Why doesn't this work on my 2011-2012 LEAF? A: The early leaf has EM61 motors. These aren't compatible with the EM57 inverter style.
 - Q: What is resolver offset coding? A: See this video for more info: https://www.youtube.com/watch?v=Of2vCYgblY4
+- Q: Are there any weight savings? A: The 110kW inverter is 3.5kg lighter than the 80kW
 
 ## Part numbers
 Here are the part numbers so you know what to get when ordering inverters
