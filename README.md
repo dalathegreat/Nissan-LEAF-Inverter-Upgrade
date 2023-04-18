@@ -50,3 +50,10 @@ The other two wires that the CAN-bridge needs is +12V constant(red wire) and GND
 Here are the differences in wiring. Please note that one wire is different color, all the rest matches!
 ![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Pictures/Wiring.png)
 ![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Pictures/Wiring2.png)
+
+## Like this project? 💖
+Leave a ⭐ If you think this project is useful. Consider hopping onto my Patreon to encourage more open-source projects!
+
+<a href="https://www.patreon.com/dala">
+	<img src="https://c5.patreon.com/external/logo/become_a_patron_button@2x.png" width="160">
+</a>
