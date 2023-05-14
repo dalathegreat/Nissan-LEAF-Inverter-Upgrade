@@ -5,24 +5,37 @@ When fitted between the inverter and VCM [EV-CAN], this CAN-bridge firmware allo
  - Modify the commanded torque up
  - Return a lower reported motor torque
  - Send a bunch of 2018+ CAN messages that the inverter expects to keep it error free
+ - Optinally, protect the fuse by limiting output at low SOC%, for instance if you run a 24kWh pack (SMALLBATTERY_IN_USE)
 */
 
 /* Choose your inverter */
 #define LEAF_110kW
 //#define LEAF_160kW
 
+/* Choose to enable fuse safeguard features*/
+//#define SMALLBATTERY_IN_USE
+
 #include "can-bridge-inverter.h"
 
 volatile	int16_t		torqueDemand			= 0; //NM * 4
 volatile	int16_t		torqueResponse			= 0; //NM * 2
 volatile	int16_t		VCMtorqueDemand			= 0; //NM * 4
+volatile	int16_t		current					= 0;
+volatile	uint16_t	main_battery_soc		= 0;
 volatile	uint8_t		shift_state				= 0;
+volatile	uint8_t		charging_state			= 0;
 
 #define SHIFT_DRIVE		4
 #define SHIFT_ECO		5
 #define SHIFT_REVERSE	2
 #define SHIFT_NEUTRAL	3
 #define SHIFT_PARK		0
+
+#define CHARGING_QUICK_START	0x40
+#define CHARGING_QUICK			0xC0
+#define CHARGING_QUICK_END		0xE0
+#define CHARGING_SLOW			0x20
+#define CHARGING_IDLE			0x60
 
 // CAN messages used for deleting P3197 [EV/HEV] & P318E [MOTOR CONTROL] DTC (Send 4B9)
 volatile	can_frame_t	inv_4B9_message	= {.can_id = 0x4B9, .can_dlc = 1, .data = {0x40}};
@@ -264,6 +277,18 @@ void can_handler(uint8_t can_bus){
 				break;
 			}
 			break;
+// 			case 0x1DB: //Current signal here from BMS going towards VCM
+// 				current = (int16_t) ((frame.data[0] << 8) | frame.data[1]);
+// 				current = (current & 0xFF70) >> 5; //take out only 11 bits (remove 5)
+// 				
+// 				temp = (current & 0b0000010000000000); //extract the 11th bit, this contains signed info.
+// 				if(temp > 0) //if message is signed, we are pulling power FROM battery
+// 				 {	//time for shenanigans
+// 					frame.data[0] = 0xF6; //hardcodes -40A pulled from battery
+// 					frame.data[1] = 0x00; //wonder if this caused DTC?
+// 					calc_crc8(&frame);
+// 				 }
+// 			break;
 			case 0x1D4: //VCM request signal
 				
 				torqueDemand = (int16_t) ((frame.data[2] << 8) | frame.data[3]); //Requested torque is 12-bit long signed.
@@ -274,6 +299,12 @@ void can_handler(uint8_t can_bus){
 				if (temp > 0){//check if message is signed
 					break; //We are demanding regen, abort modification of message TODO, make better handling of this
 				}
+				
+				#ifdef SMALLBATTERY_IN_USE
+				if(main_battery_soc < 70){
+					break; //abort all message modifications, SOC is too low and we risk blowing the fuse
+				}
+				#endif
 				
 				if(shift_state == SHIFT_DRIVE){ // Increase power only when in drive AND
 					#ifdef LEAF_110kW
@@ -287,6 +318,7 @@ void can_handler(uint8_t can_bus){
 					torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
 					frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
 					frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
+					
 					calc_crc8(&frame);
 				}	
 
@@ -306,7 +338,7 @@ void can_handler(uint8_t can_bus){
 					if(torqueResponse > 1){ //(90*0.5=45Nm)
 						//torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller (OLD STRATEGY)
 						
-						torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand (remove 
+						torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand
 						
 						frame.data[2] = (torqueResponse >> 8);
 						frame.data[3] = (torqueResponse & 0xFF);
@@ -316,6 +348,10 @@ void can_handler(uint8_t can_bus){
 
 				break;
 			case 0x284: //Hacky way of generating missing inverter message 
+				if(charging_state == CHARGING_SLOW){
+					break; //abort all message modifications, otherwise we interrupt AC charging on 62kWh LEAFs
+				}
+			
 				//Upon reading VCM originating 0x284 every 20ms, send the missing message(s) to the inverter
 				ticker40ms++;
 				if(ticker40ms > 1)
@@ -333,17 +369,36 @@ void can_handler(uint8_t can_bus){
 				}
 				break;
 			case 0x50C: //Hacky way of generating missing inverter message 
-				//Upon reading VCM originating 0x50C every 100ms, send the missing message(s) to the inverter
+				//Eliminate the CheckEV light first
+				content_4B9++;
+				if(content_4B9 > 79)
+				{
+					content_4B9 = 64;
+				}
+				inv_4B9_message.data[0] = content_4B9; //64 - 79 (0x40 - 0x4F)
+				
 				if(can_bus == 1)
 				{
 					send_can2(inv_4B9_message); //100ms
+				}
+				else
+				{
+					send_can1(inv_4B9_message); //100ms
+				}
+				
+				if(charging_state == CHARGING_SLOW){
+					break; //abort all further message modifications, otherwise we interrupt AC charging on 62kWh LEAFs
+				}
+			
+				//Upon reading VCM originating 0x50C every 100ms, send the missing message(s) to the inverter
+				if(can_bus == 1)
+				{
 					send_can2(inv_625_message); //100ms
 					send_can2(inv_5C5_message); //100ms
 					send_can2(inv_3B8_message); //100ms
 				} 
 				else 
 				{
-					send_can1(inv_4B9_message); //100ms
 					send_can1(inv_625_message); //100ms
 					send_can1(inv_5C5_message); //100ms
 					send_can1(inv_3B8_message); //100ms
@@ -366,13 +421,7 @@ void can_handler(uint8_t can_bus){
 					flip_3B8 = 1;
 					inv_3B8_message.data[1] = 0xE8;
 				}
-				
-				content_4B9++;
-				if(content_4B9 > 79)
-				{
-					content_4B9 = 64;
-				}
-				inv_4B9_message.data[0] = content_4B9; //64 - 79 (0x40 - 0x4F)
+			
 				
 				ticker100ms++; //500ms messages go here
 				if(ticker100ms > 4)
@@ -415,6 +464,11 @@ void can_handler(uint8_t can_bus){
 				}
 				break;
 			case 0x1F2: //Hacky way of generating missing inverter message
+				charging_state = frame.data[2];
+				
+				if(charging_state == CHARGING_SLOW){
+					break; //abort all message modifications, otherwise we interrupt AC charging on 62kWh LEAFs
+				}
 				//Upon reading VCM originating 0x1F2 every 10ms, send the missing message(s) to the inverter
 				if(can_bus == 1)
 				{
@@ -485,6 +539,11 @@ void can_handler(uint8_t can_bus){
 				inv_108_message.data[2] = content_108_2;
 
 				break;
+			case 0x55B:
+				//Collect SOC%
+				main_battery_soc = (frame.data[0] << 2) | ((frame.data[1] & 0xC0) >> 6); 
+				main_battery_soc /= 10; //Remove decimals, 0-100 instead of 0-100.0
+			break;
 			case 0x603:
 				//Send new ZE1 wakeup messages, why not
 				if(can_bus == 1)
