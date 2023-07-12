@@ -7,6 +7,7 @@ Tuning electric vehicles can be very dangerous. I take no responsibility (see li
 ## How to use ❓
 Now that we got that out of the way, here's what you need to get started.
 - A 2013-2017 Nissan LEAF (AZE0 model)
+- Some Nissan spec coolant might be a good idea, or distilled water. When removing the inverter some coolant can be lost!
 - A newer inverter from a 2018+ ZE1 LEAF (see this video for installation: https://www.youtube.com/watch?v=VGBA8VPWwIg )
 - Leafspy Pro to code in the new resolver offset (see this video for howto: https://www.youtube.com/watch?v=K0v269B0xqo )
 * A CAN-bridge with the firmware in this repository flashed onto it. The CAN-bridge attaches anywhere between the VCM and INV on EV-CAN. The following CAN bridges have compatibility
