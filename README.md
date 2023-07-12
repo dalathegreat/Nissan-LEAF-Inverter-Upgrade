@@ -9,8 +9,12 @@ Now that we got that out of the way, here's what you need to get started.
 - A 2013-2017 Nissan LEAF (AZE0 model)
 - A newer inverter from a 2018+ ZE1 LEAF (see this video for installation: https://www.youtube.com/watch?v=VGBA8VPWwIg )
 - Leafspy Pro to code in the new resolver offset (see this video for howto: https://www.youtube.com/watch?v=K0v269B0xqo )
-- A CAN-bridge with the firmware in this repository flashed onto it. The CAN-bridge attaches anywhere between the VCM and INV on EV-CAN. 
-- Pre-compiled .hex files are available in the "debug" folder. One for 110kW and one for 160kW. Flashing instructions: https://youtu.be/eLcNSo2Vn6U?t=167
+* A CAN-bridge with the firmware in this repository flashed onto it. The CAN-bridge attaches anywhere between the VCM and INV on EV-CAN. The following CAN bridges have compatibility
+    * 2-port [AliExpress "MB CAN Filter 18 in 1](https://www.aliexpress.com/item/1005003112723581.html?)
+    * 3-port Muxsan CAN-bridge https://www.tindie.com/products/muxsan/can-mitm-bridge-3-port-rev-25/
+* Pre-compiled .hex files are available in the "debug" folder. One for 110kW and one for 160kW. Flashing instructions:
+    * 2-port, see https://github.com/dalathegreat/Nissan-LEAF-Battery-Upgrade/tree/main#software-needed-to-flash	 
+    * 3-port https://youtu.be/eLcNSo2Vn6U?t=167
 
 ## FAQ 🔍
 - Q: Why doesn't this work on my 2011-2012 LEAF? A: The early leaf has EM61 motors. These aren't compatible with the EM57 inverter style.
