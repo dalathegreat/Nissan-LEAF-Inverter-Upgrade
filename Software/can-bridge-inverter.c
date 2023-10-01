@@ -270,7 +270,7 @@ void can_handler(uint8_t can_bus){
 		}
 		
 		switch(frame.can_id){
-			case 0x5A0:
+			case 0x5A9:
 				eco_screen = (frame.data[0] & 0x03);
 			break;
 			case 0x11A: //store shifter status
