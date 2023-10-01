@@ -5,7 +5,7 @@ When fitted between the inverter and VCM [EV-CAN], this CAN-bridge firmware allo
  - Modify the commanded torque up
  - Return a lower reported motor torque
  - Send a bunch of 2018+ CAN messages that the inverter expects to keep it error free
- - Optinally, protect the fuse by limiting output at low SOC%, for instance if you run a 24kWh pack (SMALLBATTERY_IN_USE)
+ - Optionally, protect the fuse by limiting output at low SOC%, for instance if you run a 24kWh pack (SMALLBATTERY_IN_USE)
 */
 
 /* Choose your inverter */
@@ -13,23 +13,37 @@ When fitted between the inverter and VCM [EV-CAN], this CAN-bridge firmware allo
 //#define LEAF_160kW
 
 /* Choose to enable fuse safeguard features*/
-//#define SMALLBATTERY_IN_USE
+//#define SMALLBATTERY_IN_USE //Use with 24 kWh packs
+
+/* Choose to enable regen tuning*/
+#define REGEN_TUNING_ENABLED
+
+#define TORQUE_MULTIPLIER_110 1.32 									//(1.28 is too small, results in 118kW and 1.37 results in 122kW)
+#define TORQUE_MULTIPLIER_160 1.40									//For a more aggressive pedal feel, multipliers between 1.4 and 1.6 can be used
+
+#define REGEN_MULTIPLIER 1.10
+
+/* Do not make any changes to the rows below unless you are sure what you are doing */
 
 #include "can-bridge-inverter.h"
 
-volatile	int16_t		torqueDemand			= 0; //NM * 4
-volatile	int16_t		torqueResponse			= 0; //NM * 2
-volatile	int16_t		VCMtorqueDemand			= 0; //NM * 4
-volatile	int16_t		current					= 0;
-volatile	uint16_t	main_battery_soc		= 0;
+volatile	uint16_t	torqueDemand			= 0; //NM * 4
+volatile	uint16_t	torqueResponse			= 0; //NM * 2
+volatile	uint16_t	VCMtorqueDemand			= 0; //NM * 4
+volatile	uint16_t	current					= 0;
+volatile	uint8_t		battery_soc				= 0;
 volatile	uint8_t		shift_state				= 0;
 volatile	uint8_t		charging_state			= 0;
+volatile	uint8_t		eco_screen				= 0;
 
 #define SHIFT_DRIVE		4
 #define SHIFT_ECO		5
 #define SHIFT_REVERSE	2
 #define SHIFT_NEUTRAL	3
 #define SHIFT_PARK		0
+
+#define ECO_OFF			1
+#define ECO_ON			2
 
 #define CHARGING_QUICK_START	0x40
 #define CHARGING_QUICK			0xC0
@@ -243,7 +257,6 @@ ISR(PORTC_INT0_vect){
 //Main function for handling CAN messages
 void can_handler(uint8_t can_bus){
 	can_frame_t frame;
-	int16_t temp = 0;
 	uint8_t flag = can_read(MCP_REG_CANINTF, can_bus);
 		
 	if (flag & (MCP_RX0IF | MCP_RX1IF)){
@@ -257,6 +270,9 @@ void can_handler(uint8_t can_bus){
 		}
 		
 		switch(frame.can_id){
+			case 0x5A0:
+				eco_screen = (frame.data[0] & 0x03);
+			break;
 			case 0x11A: //store shifter status
 			switch(frame.data[0] & 0xF0){
 				case 0x20:
@@ -266,8 +282,7 @@ void can_handler(uint8_t can_bus){
 				shift_state = SHIFT_NEUTRAL;
 				break;
 				case 0x40:
-				if(frame.data[1] & 0x10){ shift_state = SHIFT_ECO; }
-				else { shift_state = SHIFT_DRIVE; }
+				shift_state = SHIFT_DRIVE;
 				break;
 				case 0x00:
 				shift_state = SHIFT_PARK;
@@ -290,62 +305,74 @@ void can_handler(uint8_t can_bus){
 // 				 }
 // 			break;
 			case 0x1D4: //VCM request signal
-				
-				torqueDemand = (int16_t) ((frame.data[2] << 8) | frame.data[3]); //Requested torque is 12-bit long signed.
-				torqueDemand = (torqueDemand & 0xFFF0) >> 4; //take out only 12 bits (remove 4)
-				VCMtorqueDemand = torqueDemand; //Store the original VCM demand value
-							
-				temp = (torqueDemand & 0b0000100000000000); //extract the 12th bit, this contains signed info.
-				if (temp > 0){//check if message is signed
-					break; //We are demanding regen, abort modification of message TODO, make better handling of this
-				}
+
+				torqueDemand = ((frame.data[2] << 8) | (frame.data[3])); //Resides in frame2 and frame3
+				VCMtorqueDemand = (torqueDemand >> 4); //Store the original VCM demand value (ignoring sign, just the raw NM demand)
 				
 				#ifdef SMALLBATTERY_IN_USE
-				if(main_battery_soc < 70){
+				if(battery_soc < 70){
 					break; //abort all message modifications, SOC is too low and we risk blowing the fuse
 				}
 				#endif
 				
-				if(shift_state == SHIFT_DRIVE){ // Increase power only when in drive AND
+				if (shift_state != SHIFT_DRIVE || eco_screen == ECO_ON) break; //Stop modifying message if: Not in drive OR ECO mode is ON
+				
+				if((frame.data[2] & 0x80)){ //Message is signed, we are requesting regen
+					#ifndef REGEN_TUNING_ENABLED
+					break; //We are demanding regen and regen tuning is not on, abort modification!
+					#endif
+					torqueDemand = ~torqueDemand; //2S complement
+					torqueDemand = (torqueDemand >> 4);
+					torqueDemand = (torqueDemand * REGEN_MULTIPLIER);
+					torqueDemand = (torqueDemand << 4);
+					torqueDemand = ~torqueDemand; //2S complement
+					        
+					frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
+					frame.data[3] = (torqueDemand & 0x00F0);		        
+				}
+				else{ //Message is not signed, we are requesting power
+					torqueDemand = (torqueDemand >> 4);
 					#ifdef LEAF_110kW
-					torqueDemand = torqueDemand*1.32; //Add a multiplier of 1.32
-					//(1.28 is too small, results in 118kW and 1.37 results in 122kW)
+					torqueDemand = (torqueDemand * TORQUE_MULTIPLIER_110); //Increase torque by the specified multiplier
 					#endif
 					#ifdef LEAF_160kW
-					torqueDemand = torqueDemand*1.37; //Add a multiplier of 1.37
+					torqueDemand = (torqueDemand * TORQUE_MULTIPLIER_160); //Increase torque by the specified multiplier
 					#endif
-						
-					torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
+					torqueDemand = (torqueDemand << 4);
 					frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
-					frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
-					
-					calc_crc8(&frame);
-				}	
-
-
-				break;
-			case 0x1DA: //motor response also needs to be modified
-			
-				torqueResponse = (int16_t) (((frame.data[2] & 0x07) << 8) | frame.data[3]);
-				torqueResponse = (torqueResponse & 0b0000011111111111); //only take out 11bits, no need to shift
-				
-				temp = (torqueResponse & 0b0000010000000000); //extract the 11th bit, this contains signed info.
-				if (temp > 0){ //message is signed
-					break;//We are getting regen, abort modification of message
-				} 
-
-				if(shift_state == SHIFT_DRIVE){ //modify power response message only when in drive
-					if(torqueResponse > 1){ //(90*0.5=45Nm)
-						//torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller (OLD STRATEGY)
-						
-						torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand
-						
-						frame.data[2] = (torqueResponse >> 8);
-						frame.data[3] = (torqueResponse & 0xFF);
-						calc_crc8(&frame);
-					}
+					frame.data[3] = (torqueDemand & 0x00F0);
 				}
 
+				calc_crc8(&frame);
+				break;
+			case 0x1DA: //motor response also needs to be modified
+				torqueResponse = (((frame.data[2] & 0x07) << 8) | frame.data[3]);
+				torqueResponse = (torqueResponse & 0x7FF); //only take out 11bits, no need to shift
+				
+				#ifdef SMALLBATTERY_IN_USE
+				if(battery_soc < 70){
+					break; //abort all message modifications, SOC is too low and we risk blowing the fuse
+				}
+				#endif
+				
+				if (shift_state != SHIFT_DRIVE || eco_screen == ECO_ON) break; //Stop modifying message if: Not in drive OR ECO mode is ON
+
+				if (frame.data[2] & 0x04){ //We are Regen braking
+					#ifndef REGEN_TUNING_ENABLED
+					break; //We are demanding regen and regen tuning is not on, abort modification!
+					#endif
+					torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand
+					frame.data[2] = ((frame.data[2] & 0xF8) | (torqueResponse >> 8));
+					frame.data[3] = (torqueResponse & 0xFF);
+				}
+				else //We are requesting power
+				{
+					torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand				
+					frame.data[2] = ((frame.data[2] & 0xF8) | (torqueResponse >> 8));
+					frame.data[3] = (torqueResponse & 0xFF);
+				}
+
+				calc_crc8(&frame);
 				break;
 			case 0x284: //Hacky way of generating missing inverter message 
 				if(charging_state == CHARGING_SLOW){
@@ -541,8 +568,8 @@ void can_handler(uint8_t can_bus){
 				break;
 			case 0x55B:
 				//Collect SOC%
-				main_battery_soc = (frame.data[0] << 2) | ((frame.data[1] & 0xC0) >> 6); 
-				main_battery_soc /= 10; //Remove decimals, 0-100 instead of 0-100.0
+				battery_soc = ((frame.data[0] << 2) | ((frame.data[1] & 0xC0) >> 6)) / 10;
+
 			break;
 			case 0x603:
 				//Send new ZE1 wakeup messages, why not
