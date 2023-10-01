@@ -9,8 +9,8 @@ When fitted between the inverter and VCM [EV-CAN], this CAN-bridge firmware allo
 */
 
 /* Choose your inverter */
-//#define LEAF_110kW
-#define LEAF_160kW
+#define LEAF_110kW
+//#define LEAF_160kW
 
 /* Choose to enable fuse safeguard features*/
 //#define SMALLBATTERY_IN_USE //Use with 24 kWh packs
@@ -18,10 +18,10 @@ When fitted between the inverter and VCM [EV-CAN], this CAN-bridge firmware allo
 /* Choose to enable regen tuning*/
 #define REGEN_TUNING_ENABLED
 
-#define TORQUE_MULTIPLIER_110 1.32 		//(1.28 is too small, results in 118kW and 1.37 results in 122kW)
-#define TORQUE_MULTIPLIER_160 1.37		//For a more aggressive pedal feel, multipliers between 1.4 and 1.6 can be used
+#define TORQUE_MULTIPLIER_110 1.32 									//(1.28 is too small, results in 118kW and 1.37 results in 122kW)
+#define TORQUE_MULTIPLIER_160 1.40									//For a more aggressive pedal feel, multipliers between 1.4 and 1.6 can be used
 
-#define REGEN_MULTIPLIER 1.05
+#define REGEN_MULTIPLIER 1.10
 
 /* Do not make any changes to the rows below unless you are sure what you are doing */
 
@@ -306,9 +306,8 @@ void can_handler(uint8_t can_bus){
 // 			break;
 			case 0x1D4: //VCM request signal
 
-				torqueDemand = ((frame.data[2] << 8) | frame.data[3]); //Requested torque is 12-bit long signed.
-				torqueDemand = (torqueDemand & 0xFFF0) >> 4; //take out only 12 bits (remove 4)
-				VCMtorqueDemand = torqueDemand; //Store the original VCM demand value
+				torqueDemand = ((frame.data[2] << 8) | (frame.data[3])); //Resides in frame2 and frame3
+				VCMtorqueDemand = (torqueDemand >> 4); //Store the original VCM demand value (ignoring sign, just the raw NM demand)
 				
 				#ifdef SMALLBATTERY_IN_USE
 				if(battery_soc < 70){
@@ -316,31 +315,34 @@ void can_handler(uint8_t can_bus){
 				}
 				#endif
 				
-				if (shift_state != SHIFT_DRIVE || (torqueDemand < 2048 && eco_screen == ECO_ON)) break; //Stop modifying message if: Not in drive OR requesting power in ECO mode
+				if (shift_state != SHIFT_DRIVE || eco_screen == ECO_ON) break; //Stop modifying message if: Not in drive OR ECO mode is ON
 				
-				if (torqueDemand >= 2048){ //We are regen braking in D
+				if((frame.data[2] & 0x80)){ //Message is signed, we are requesting regen
 					#ifndef REGEN_TUNING_ENABLED
 					break; //We are demanding regen and regen tuning is not on, abort modification!
 					#endif
-					torqueDemand = (torqueDemand * REGEN_MULTIPLIER); //Increase regen braking by multiplier amount
-
-					torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits
+					torqueDemand = ~torqueDemand; //2S complement
+					torqueDemand = (torqueDemand >> 4);
+					torqueDemand = (torqueDemand * REGEN_MULTIPLIER);
+					torqueDemand = (torqueDemand << 4);
+					torqueDemand = ~torqueDemand; //2S complement
+					        
 					frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
-					frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
+					frame.data[3] = (torqueDemand & 0x00F0);		        
 				}
-				else //We are requesting power in D (ECO OFF)
-				{
+				else{ //Message is not signed, we are requesting power
+					torqueDemand = (torqueDemand >> 4);
 					#ifdef LEAF_110kW
 					torqueDemand = (torqueDemand * TORQUE_MULTIPLIER_110); //Increase torque by the specified multiplier
 					#endif
 					#ifdef LEAF_160kW
 					torqueDemand = (torqueDemand * TORQUE_MULTIPLIER_160); //Increase torque by the specified multiplier
 					#endif
-					
-					torqueDemand = (torqueDemand << 4); //Shift back the 4 removed bits	
+					torqueDemand = (torqueDemand << 4);
 					frame.data[2] = torqueDemand >> 8; //Slap it back into whole 2nd frame
-					frame.data[3] = torqueDemand & 0xF0; //Only high nibble on 3rd frame (0xFF might work if no colliding data)
+					frame.data[3] = (torqueDemand & 0x00F0);
 				}
+
 				calc_crc8(&frame);
 				break;
 			case 0x1DA: //motor response also needs to be modified
@@ -353,21 +355,20 @@ void can_handler(uint8_t can_bus){
 				}
 				#endif
 				
-				if (shift_state != SHIFT_DRIVE || (torqueResponse < 1024 && eco_screen == ECO_ON)) break; //Stop modifying message if: Not in drive OR requesting power in ECO mode
+				if (shift_state != SHIFT_DRIVE || eco_screen == ECO_ON) break; //Stop modifying message if: Not in drive OR ECO mode is ON
 
-				if (torqueResponse >= 1024){ //We are regen braking in D
+				if (frame.data[2] & 0x04){ //We are Regen braking
 					#ifndef REGEN_TUNING_ENABLED
 					break; //We are demanding regen and regen tuning is not on, abort modification!
 					#endif
 					torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand
-					frame.data[2] = (torqueResponse >> 8);
+					frame.data[2] = ((frame.data[2] & 0xF8) | (torqueResponse >> 8));
 					frame.data[3] = (torqueResponse & 0xFF);
 				}
-				else //We are requesting power in D (ECO OFF)
+				else //We are requesting power
 				{
-					//torqueResponse = torqueResponse*0.77; //Fool VCM that the response is smaller (OLD STRATEGY)
 					torqueResponse = (VCMtorqueDemand*0.5); //Fool VCM that response is exactly the same as demand				
-					frame.data[2] = (torqueResponse >> 8);
+					frame.data[2] = ((frame.data[2] & 0xF8) | (torqueResponse >> 8));
 					frame.data[3] = (torqueResponse & 0xFF);
 				}
 
