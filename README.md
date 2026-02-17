@@ -35,6 +35,8 @@ ZE1 inverters (2018-2022)
 22-pin Yazaki wiring part number: 7283-8750-30
 Buy link: https://nl.aliexpress.com/item/1005003344398420.html?spm=a2g0s.9042311.0.0.25994c4doh13qv
 
+90 degree coolant adapter: 290Y5-5SK0A 
+
 Temperature sensor (no link yet, just use butt-crimp connectors)
 
 Don't get these, just listed so you know what they are.
