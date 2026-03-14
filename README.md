@@ -48,7 +48,7 @@ ZE0 inverters (2011-2012)
 291A0-3NA0A - 80kW
 
 ## Example installation pics and wiring info 👉
-Here's where the CAN-bridge attaches, behind the glovebox on the left connector going into the VCM. The EV-CAN is a twisted pair green/blue cable. Cut it and install the CAN-bridge wires there.
+Here's where the CAN-bridge attaches, behind the glovebox (Same on both LHD and RHD vehicles) on the left connector going into the VCM. The EV-CAN is a twisted pair green/blue cable. Cut it and install the CAN-bridge wires there.
 The other two wires that the CAN-bridge needs is +12V constant(red wire) and GND(black wire). +12V constant can be taken from many places, e.g. OBD2port.
 
 ![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Pictures/CAN-bridge1.jpeg)
