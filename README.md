@@ -35,7 +35,7 @@ ZE1 inverters (2018-2022)
 22-pin Yazaki wiring part number: 7283-8750-30
 Buy link: https://nl.aliexpress.com/item/1005003344398420.html?spm=a2g0s.9042311.0.0.25994c4doh13qv
 
-90 degree coolant adapter: 290Y5-5SK0A 
+90 degree coolant adapter: 290Y5-5SK0A (Only likely needed on pre 2015 cars)
 
 Temperature sensor (no link yet, just use butt-crimp connectors)
 
@@ -58,6 +58,11 @@ The other two wires that the CAN-bridge needs is +12V constant(red wire) and GND
 Here are the differences in wiring. Please note that one wire is different color, all the rest matches!
 ![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Pictures/Wiring.png)
 ![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Pictures/Wiring2.png)
+
+## Video install example
+Battery Man inverter upgrade on a late Generation 1 Nissan Leaf. (Note later gen 1 have many white and black cables in the loom rather than the multicoloured of the early gen 0.)
+
+https://youtu.be/GthK5L5QnZU
 
 ## Like this project? 💖
 Leave a ⭐ If you think this project is useful. Consider hopping onto my Patreon to encourage more open-source projects!
