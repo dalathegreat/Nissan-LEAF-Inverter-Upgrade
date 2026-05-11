@@ -60,9 +60,9 @@ Here are the differences in wiring. Please note that one wire is different color
 ![name-of-you-image](https://github.com/dalathegreat/Nissan-LEAF-Inverter-Upgrade/blob/main/Pictures/Wiring2.png)
 
 ## Video install example
-Battery Man inverter upgrade on a late Generation 1 Nissan Leaf. (Note later gen 1 have many white and black cables in the loom rather than the multicoloured of the early gen 0.)
+Battery Man inverter upgrade on a late Generation 0 Nissan Leaf. (Note later gen 1 have many white and black cables in the loom rather than the multicoloured of the early gen 0.)
 
-https://youtu.be/GthK5L5QnZU
+Inverter upgrade on a late gen 0 - https://youtu.be/GthK5L5QnZU
 
 ## Like this project? 💖
 Leave a ⭐ If you think this project is useful. Consider hopping onto my Patreon to encourage more open-source projects!
